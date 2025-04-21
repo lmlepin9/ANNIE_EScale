@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+# PDF
+*.pdf 
+
+# Figures directory
+figures/ 
