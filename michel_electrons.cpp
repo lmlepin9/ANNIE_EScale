@@ -7,119 +7,111 @@
 #include "TFile.h"
 #include "TTree.h"
 #include "TChain.h"
+#include "TMath.h"
+
+// ANNIE plot style 
 #include "rootlogon.hpp"
 
 
-void michel_electrons(std::string file_name){
 
+void read_michel_mc(std::string file_name, std::vector<double> &cluster_pe_mc,
+                    std::vector<double> &cluster_qb_mc, std::vector<std::vector<double>> &hitID_mc,
+                    std::vector<std::vector<double>> &hitPE_mc, std::vector<double> &true_vx,
+                    std::vector<double> &true_vy, std::vector<double> &true_vz, std::vector<double> &true_E){
+
+    std::cout << "Processing Michel electron MC sample..." << std::endl;
+    TFile *f = TFile::Open(file_name.c_str(), "READ"); 
+    TTree *beam_cluster_tree = (TTree*) f->Get("phaseIITankClusterTree");
+    TTree *truth_tree = (TTree*) f->Get("phaseIITriggerTree");
+
+    std::cout << "Number of entries in tank tree: " << beam_cluster_tree->GetEntries() << std::endl;
+    std::cout << "Number of entries in truth tree: " << truth_tree->GetEntries() << std::endl;
+
+    double cpe_mc;
+    double cb_mc;
+    int    ev_mc; 
+    UInt_t    ch_mc;
+    std::vector<double>  *hpe_mc=nullptr;
+    std::vector<double>  *hid_mc=nullptr;
+
+    beam_cluster_tree->SetBranchAddress("eventNumber", &ev_mc);
+    beam_cluster_tree->SetBranchAddress("clusterPE", &cpe_mc);
+    beam_cluster_tree->SetBranchAddress("clusterChargeBalance", &cb_mc);
+    beam_cluster_tree->SetBranchAddress("clusterHits", &ch_mc);
+    beam_cluster_tree->SetBranchAddress("hitPE", &hpe_mc);
+    beam_cluster_tree->SetBranchAddress("hitDetID", &hid_mc);
+
+    double vx_mc;
+    double vy_mc;
+    double vz_mc;
+    double E_mc;
+
+    truth_tree->SetBranchAddress("trueVtxX", &vx_mc);
+    truth_tree->SetBranchAddress("trueVtxX", &vy_mc);
+    truth_tree->SetBranchAddress("trueVtxX", &vz_mc);
+    truth_tree->SetBranchAddress("trueMuonEnergy", &E_mc);
+
+
+    // Iterate and apply selection cuts
+    int n_selected = 0; 
+    for(int i=0; i < beam_cluster_tree->GetEntries(); i++){
+        beam_cluster_tree->GetEntry(i);
+        truth_tree->GetEntry(ev_mc);
+
+        double vz_plane = TMath::Sqrt(TMath::Power(vx_mc/100.,2) + TMath::Power(vz_mc/100.,2));
+        double vy_plane = TMath::Abs(vy_mc/100.); 
+        
+        bool select_michel = (vz_plane < 1.1) && (vy_plane < 1.5) &&
+                             (cb_mc < 0.18) && (cpe_mc < 650);
+
+        if(select_michel){
+            true_vx.push_back(vx_mc);
+            true_vy.push_back(vy_mc);
+            true_vz.push_back(vz_mc);
+            true_E.push_back(E_mc);
+            n_selected+=1;
+        }
+
+    }
+    std::cout << "Number of selected MC michel electrons: " << n_selected << std::endl;
+
+
+}
+
+void michel_electrons(){
     rootlogon();
     gStyle->SetOptStat(0);
 
-    // Data arrays
-    std::vector<float> cluster_time; 
-    std::vector<float> cluster_pe;
-    std::vector<float> cluster_qb;
-    std::vector<std::vector<double>> hitID;
-    std::vector<std::vector<double>> hitPE;
-    std::vector<std::vector<double>> hitT;
-    std::vector<int> thru;
+    std::cout << "Running michel electrons selection..." << std::endl;
 
-    std::vector<double> cluster_time_mc; 
+
     std::vector<double> cluster_pe_mc;
     std::vector<double> cluster_qb_mc;
     std::vector<std::vector<double>> hitID_mc;
     std::vector<std::vector<double>> hitPE_mc;
-    std::vector<std::vector<double>> hitT_mc;
-    std::vector<int> thru_mc;
-
-    std::string data_list = "2023_beamdata_v1.txt";
-    std::string mc_list = "mc_thru_muons.list";
-    
-    // Read data
-    read_data(data_list, cluster_time, cluster_pe, cluster_qb,
-              hitID, hitPE, hitT, thru);
+    std::vector<double> true_vx;
+    std::vector<double> true_vy;
+    std::vector<double> true_vz;
+    std::vector<double> true_E;
 
 
-    // Read MC 
-    read_MC(mc_list, cluster_time_mc, cluster_pe_mc, cluster_qb_mc,
-                hitID_mc, hitPE_mc, hitT_mc, thru_mc);
+    std::string michel_mc_file = "/exp/annie/data/users/lmoralep/michels_full_volume_default.root";
+    read_michel_mc(michel_mc_file, cluster_pe_mc, cluster_qb_mc,
+                  hitID_mc, hitPE_mc, true_vx, true_vy, true_vz, true_E);
 
 
-    // Create histogram and fill it
-    TH1D *cpe_hist = new TH1D("cpe", " ", 30, 1000., 6000.);
-    TH1D *cpe_hist_mc = new TH1D("cpe_mc", " ", 30, 1000. ,6000.);
-    
-
-    int mc_max = cluster_pe_mc.size();
-    int data_counter = 0;
-
-    for(float cp_val: cluster_pe){
-        //std::cout << cp_val << std::endl;
-        if(data_counter > mc_max){break;}
-        cpe_hist->Fill(cp_val);
-        data_counter+=1;
-    }
-    
-    for(double cp_val_mc: cluster_pe_mc){
-        cpe_hist_mc->Fill(cp_val_mc);
+    TH1D *true_E_hist = new TH1D("True_E", " Michel electrons; Energy [MeV]; Number of entries",100,0., 60. );
+    true_E_hist->SetLineColor(kRed);
+    for(double E_val: true_E){
+        true_E_hist->Fill(E_val);
     }
 
-    cpe_hist_mc->SetXTitle("Cluster charge [p.e]");
-    cpe_hist_mc->SetYTitle("Number of entries");
-    cpe_hist->SetLineColor(kBlack);
-    cpe_hist_mc->SetLineColor(kRed);
-    cpe_hist->SetXTitle("Cluster charge [pe]");
-    cpe_hist->SetYTitle("Number of entries");
-    TCanvas *c1 = new TCanvas("c1", "canvas", 800, 600);
-    TLegend *l1 = new TLegend(0.73, 0.7, 0.85, 0.8);
-    l1->AddEntry(cpe_hist, "Data");
-    l1->AddEntry(cpe_hist_mc, "MC");
-    cpe_hist_mc->Draw("HIST");
-    cpe_hist->Draw("E SAME");
-    l1->Draw("SAME");
-    PreliminarySide();
-    c1->SaveAs("./figures/charge_pe_hist.pdf");
+    TCanvas *c = new TCanvas("c", "trueE", 800,600);
+    true_E_hist->Draw("HIST");
+    SimulationSide();
+    c->SaveAs("./figures/michel_electron_E_spectrum.pdf");
 
 
-    // Generate Data/MC comparison plot
-    std::string cpe_fig_name = "./figures/charge_pe_hist_ratio.pdf";
-    MakeRatioPlot(cpe_hist, cpe_hist_mc, cpe_fig_name);
-
-
-
-    // Create histogram and fill it
-    TH1D *cb_hist = new TH1D("cb", " ", 30, 0.07, 0.2);
-    TH1D *cb_hist_mc = new TH1D("cb_mc", " ", 30, 0.07, 0.2);
-
-    int data_counter_cb = 0;
-    for(float cb_val: cluster_qb){
-        if(data_counter_cb > mc_max){break;}
-        cb_hist->Fill(cb_val);
-        data_counter_cb+=1;
-    }
-
-    for(double cb_val_mc: cluster_qb_mc){
-        cb_hist_mc->Fill(cb_val_mc);
-    }
-
-    cb_hist->SetLineColor(kBlack);
-    cb_hist->SetXTitle("Cluster charge balance");
-    cb_hist->SetYTitle("Number of entries");
-
-
-    cb_hist_mc->SetLineColor(kRed);
-    cb_hist_mc->SetXTitle("Cluster charge balance");
-    cb_hist_mc->SetYTitle("Number of entries");
-
-
-    TCanvas *c2 = new TCanvas("c2", "canvas", 800, 600);
-    TLegend *l2 = new TLegend(0.6, 0.7, 0.8, 0.8);
-    cb_hist->Draw("E");
-    PreliminarySide();
-    c2->SaveAs("./figures/charge_balance_hist.pdf");
-
-    std::string cb_fig_name = "./figures/charge_cb_hist_ratio.pdf";
-    MakeRatioPlot(cb_hist, cb_hist_mc, cb_fig_name);
-
+  
 
 }
