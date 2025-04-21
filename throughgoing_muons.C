@@ -352,8 +352,8 @@ void throughgoing_muons(){
     std::vector<std::vector<double>> hitT_mc;
     std::vector<int> thru_mc;
 
-    std::string data_list = "2023_beamdata_v1.txt";
-    std::string mc_list = "mc_thru_muons.list";
+    std::string data_list = "./samples/2023_beamdata_v1.txt";
+    std::string mc_list = "./samples/mc_thru_muons.list";
     
     // Read data
     read_data(data_list, cluster_time, cluster_pe, cluster_qb,
