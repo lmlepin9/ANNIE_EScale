@@ -7,6 +7,9 @@
 #include "TFile.h"
 #include "TTree.h"
 #include "TChain.h"
+#include "TStopwatch.h"
+
+// ANNIE plot style
 #include "rootlogon.hpp"
 
 
@@ -54,6 +57,27 @@ void read_data(std::string file_list, std::vector<float>& cluster_time, std::vec
         data_tree->Add(filePath.c_str());
         file_counter+=1;
     }
+
+    /*
+    // We disable all branches
+    data_tree->SetBranchStatus("*",0);
+
+    // Enable only the following branches
+    data_tree->SetBranchStatus("cluster_Qb", 1);
+    data_tree->SetBranchStatus("cluster_time_BRF", 1); 
+    data_tree->SetBranchStatus("cluster_PE", 1);
+    data_tree->SetBranchStatus("cluster_Hits", 1);
+    data_tree->SetBranchStatus("isBrightest", 1);
+    data_tree->SetBranchStatus("TankMRDCoinc", 1);
+    data_tree->SetBranchStatus("MRD_activity", 1);
+    data_tree->SetBranchStatus("MRD_Track", 1);
+    data_tree->SetBranchStatus("NoVeto", 1);
+    data_tree->SetBranchStatus("hitZ", 1);
+    data_tree->SetBranchStatus("hitPE", 1);
+    data_tree->SetBranchStatus("hitT", 1);
+    data_tree->SetBranchStatus("hitID", 1);
+    data_tree->SetBranchStatus("MRDThrough", 1);
+    */ 
 
 
     float ct2;
@@ -173,9 +197,36 @@ void read_MC(std::string file_list, std::vector<double>& cluster_time, std::vect
         if(file_counter == TEST_RUN_MC){
             break;
         }
+        //std::cout << "Reading: " << filePath << std::endl;
         TFile *f = TFile::Open(filePath.c_str(), "READ");
         TTree *beam_cluster_tree = (TTree*) f->Get("phaseIITankClusterTree");
-    
+
+
+        // If tree is not present we skip to next file
+        if(!beam_cluster_tree){
+            //std::cout << "PhaseIITankClusterTree not present in: " << filePath << std::endl;
+            //std::cout << "Skipping to next file..." << std::endl;
+            continue;
+        }
+
+        // Disable all branches
+        beam_cluster_tree->SetBranchStatus("*", 0);
+
+        // Enable only the following branches: 
+
+        beam_cluster_tree->SetBranchStatus("eventNumber", 1);
+        beam_cluster_tree->SetBranchStatus("clusterPE", 1);
+        beam_cluster_tree->SetBranchStatus("clusterChargeBalance", 1);
+        beam_cluster_tree->SetBranchStatus("clusterTime", 1);
+        beam_cluster_tree->SetBranchStatus("hitX", 1);
+        beam_cluster_tree->SetBranchStatus("hitY", 1);
+        beam_cluster_tree->SetBranchStatus("hitZ", 1);
+        beam_cluster_tree->SetBranchStatus("hitT", 1);
+        beam_cluster_tree->SetBranchStatus("hitPE", 1);
+        beam_cluster_tree->SetBranchStatus("hitDetID", 1);
+        beam_cluster_tree->SetBranchStatus("TankMRDCoinc", 1);
+        beam_cluster_tree->SetBranchStatus("NoVeto",1);
+            
         double ct_mc;
         double cpe_mc;
         double cb_mc;
@@ -207,6 +258,21 @@ void read_MC(std::string file_list, std::vector<double>& cluster_time, std::vect
 
         TTree *truth_tree = (TTree*) f->Get("phaseIITriggerTree");
 
+        // If tree is not present we skip to next file
+        if(!truth_tree){
+            //std::cout << "PhaseIITriggerTree not present in: " << filePath << std::endl;
+            //std::cout << "Skipping to next file..." << std::endl;
+            continue;
+        }
+
+        // Disable all branches:
+        truth_tree->SetBranchStatus("*", 0);
+
+        // Enable only these branches:
+        truth_tree->SetBranchStatus("numMRDTracks", 1);
+        truth_tree->SetBranchStatus("MRDThrough", 1);
+
+
         int t_mc; 
         std::vector<int> *tg_mc=nullptr; 
 
@@ -215,6 +281,13 @@ void read_MC(std::string file_list, std::vector<double>& cluster_time, std::vect
 
         int nEvents = beam_cluster_tree->GetEntries();
         int nTruthEvs = truth_tree->GetEntries();
+
+
+
+        if(file_counter%500==0){
+            std::cout << "Processing file number: " << file_counter << std::endl;
+        }
+
         for(int i=0; i < nEvents; i++){
             beam_cluster_tree->GetEntry(i);
             truth_tree->GetEntry(ev_mc);
@@ -259,20 +332,29 @@ void read_MC(std::string file_list, std::vector<double>& cluster_time, std::vect
 
 
 
-
+        // We only count a file if it we processed it 
         file_counter+=1;
 
 
         // Close file and deletes owned objects
+        f->Close();
+        //delete beam_cluster_tree;
+        //delete truth_tree;
         delete f;
     }
 
-    std::cout << "Number of selected throughgoing muons in data: " << selected_thru_mc << std::endl;
+    std::cout << "Number of selected throughgoing muons in MC: " << selected_thru_mc << std::endl;
 
 }
 
 
 void MakeRatioPlot(TH1D *data_hist, TH1D* mc_hist, std::string fig_name){
+
+
+    double max_data = data_hist->GetMaximum();
+    double max_mc = mc_hist->GetMaximum();
+    double y_max = std::max(max_data, max_mc);
+
 
     TCanvas *c = new TCanvas("c", "MC/Data Comparison", 800,800);
     c->Divide(1,2);
@@ -283,6 +365,7 @@ void MakeRatioPlot(TH1D *data_hist, TH1D* mc_hist, std::string fig_name){
     pad1->Draw();
     pad1->cd();
 
+    mc_hist->SetMaximum(1.1*y_max);
     mc_hist->GetXaxis()->SetLabelSize(0);
     mc_hist->Draw("HIST");
     data_hist->Draw("E1 SAME");
@@ -332,6 +415,9 @@ void MakeRatioPlot(TH1D *data_hist, TH1D* mc_hist, std::string fig_name){
 
 void throughgoing_muons(){
 
+    TStopwatch timer;
+    timer.Start();
+
     rootlogon();
     gStyle->SetOptStat(0);
 
@@ -353,8 +439,9 @@ void throughgoing_muons(){
     std::vector<int> thru_mc;
 
     std::string data_list = "./samples/2023_beamdata_v1.txt";
-    std::string mc_list = "./samples/mc_thru_muons.list";
-    
+    //std::string mc_list = "./samples/mc_thru_muons.list";
+    std::string mc_list = "./samples/mc_world.txt";
+
     // Read data
     read_data(data_list, cluster_time, cluster_pe, cluster_qb,
               hitID, hitPE, hitT, thru);
@@ -398,11 +485,11 @@ void throughgoing_muons(){
     cpe_hist->Draw("E SAME");
     l1->Draw("SAME");
     PreliminarySide();
-    c1->SaveAs("./figures/charge_pe_hist.pdf");
+    c1->SaveAs("./figures/charge_pe_hist_mc_world.pdf");
 
 
     // Generate Data/MC comparison plot
-    std::string cpe_fig_name = "./figures/charge_pe_hist_ratio.pdf";
+    std::string cpe_fig_name = "./figures/charge_pe_hist_ratio_mc_world.pdf";
     MakeRatioPlot(cpe_hist, cpe_hist_mc, cpe_fig_name);
 
 
@@ -436,10 +523,13 @@ void throughgoing_muons(){
     TLegend *l2 = new TLegend(0.6, 0.7, 0.8, 0.8);
     cb_hist->Draw("E");
     PreliminarySide();
-    c2->SaveAs("./figures/charge_balance_hist.pdf");
+    c2->SaveAs("./figures/charge_balance_hist_mc_world.pdf");
 
-    std::string cb_fig_name = "./figures/charge_cb_hist_ratio.pdf";
+    std::string cb_fig_name = "./figures/charge_cb_hist_ratio_mc_world.pdf";
     MakeRatioPlot(cb_hist, cb_hist_mc, cb_fig_name);
+
+    timer.Stop();
+    timer.Print();
 
 
 }
