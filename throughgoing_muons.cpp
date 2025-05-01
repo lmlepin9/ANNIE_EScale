@@ -147,9 +147,9 @@ void read_data(std::string file_list, std::vector<float>& cluster_time, std::vec
             cluster_time.push_back(ct2);
             cluster_pe.push_back(cpe1);
             cluster_qb.push_back(cb1);
-            hitID.push_back(*hid1);
-            hitPE.push_back(*hpe1);
-            hiT.push_back(*ht1);
+            hitID.emplace_back(*hid1);
+            hitPE.emplace_back(*hpe1);
+            hiT.emplace_back(*ht1);
             selected_thru+=1;
 
         }
@@ -271,13 +271,39 @@ void read_MC(std::string file_list, std::vector<double>& cluster_time, std::vect
         // Enable only these branches:
         truth_tree->SetBranchStatus("numMRDTracks", 1);
         truth_tree->SetBranchStatus("MRDThrough", 1);
+        truth_tree->SetBranchStatus("trueFSLVtx_X", 1);
+        truth_tree->SetBranchStatus("trueFSLVtx_Y", 1);
+        truth_tree->SetBranchStatus("trueFSLVtx_Z", 1);
+        truth_tree->SetBranchStatus("trueFSLMomentum_X", 1);
+        truth_tree->SetBranchStatus("trueFSLMomentum_Y", 1);
+        truth_tree->SetBranchStatus("trueFSLMomentum_Z", 1);
+        truth_tree->SetBranchStatus("trueFSLEnergy", 1);
+        truth_tree->SetBranchStatus("trueFSLPdg", 1);
+
 
 
         int t_mc; 
+        int t_lep_pdg;
+        double t_lep_vx;
+        double t_lep_vy;
+        double t_lep_vz;
+        double t_lep_px;
+        double t_lep_py;
+        double t_lep_pz;
+        double t_lep_E;
+
         std::vector<int> *tg_mc=nullptr; 
 
         truth_tree->SetBranchAddress("numMRDTracks", &t_mc);
         truth_tree->SetBranchAddress("MRDThrough", &tg_mc);
+        truth_tree->SetBranchAddress("trueFSLVtx_X", &t_lep_vx);
+        truth_tree->SetBranchAddress("trueFSLVtx_Y", &t_lep_vy);
+        truth_tree->SetBranchAddress("trueFSLVtx_Z", &t_lep_vz);
+        truth_tree->SetBranchAddress("trueFSLMomentum_X", &t_lep_px);
+        truth_tree->SetBranchAddress("trueFSLMomentum_Y", &t_lep_py);
+        truth_tree->SetBranchAddress("trueFSLMomentum_Z", &t_lep_pz);
+        truth_tree->SetBranchAddress("trueFSLEnergy", &t_lep_E);
+        truth_tree->SetBranchAddress("trueFSLPdg", &t_lep_pdg);
 
         int nEvents = beam_cluster_tree->GetEntries();
         int nTruthEvs = truth_tree->GetEntries();
@@ -291,6 +317,21 @@ void read_MC(std::string file_list, std::vector<double>& cluster_time, std::vect
         for(int i=0; i < nEvents; i++){
             beam_cluster_tree->GetEntry(i);
             truth_tree->GetEntry(ev_mc);
+
+            double t_lep_cos = (t_lep_pz)/TMath::Sqrt(
+                TMath::Power(t_lep_px,2) +
+                TMath::Power(t_lep_py,2) +
+                TMath::Power(t_lep_pz,2)
+            );
+
+            // Truth cuts...
+            bool true_thru_muon = (TMath::Abs(t_lep_pdg) == 13) &&
+                                  (t_lep_vx >= -324.58 && t_lep_vx <= 291.18) &&
+                                  (t_lep_vy >= -373.20 && t_lep_vy <= 327.74) &&
+                                  (t_lep_vz >= -756.83 && t_lep_vz <= -0.4) &&
+                                  (t_lep_E >= 388.63) &&
+                                  (t_lep_cos >= 0.69);
+                                   
 
 
 
@@ -308,6 +349,7 @@ void read_MC(std::string file_list, std::vector<double>& cluster_time, std::vect
 
             //std::cout << cpe_mc << " " << cb_mc << " " << ct_mc << std::endl;
 
+            // "Reco" cuts
             bool througgoing_mc = (t_mc == 1)    &&  // 1 track
                                (tmrd_mc == 1) &&  // Tank-MRD coincidence
                                (nv_mc == 0)   &&  // Vetoed (FMV yes)
@@ -315,14 +357,14 @@ void read_MC(std::string file_list, std::vector<double>& cluster_time, std::vect
                                (cb_mc > 0. && cb_mc < 0.2)    && // Cluster charge balance < 0.2
                                (a>0.);   // Charge barycenter downstream 
 
-            if(througgoing_mc){
+            if(true_thru_muon && througgoing_mc){
             //std::cout << cpe1 << std::endl;
             cluster_time.push_back(ct_mc);
             cluster_pe.push_back(cpe_mc);
             cluster_qb.push_back(cb_mc);
-            hitID.push_back(*hid_mc);
-            hitPE.push_back(*hpe_mc);
-            hiT.push_back(*ht_mc);
+            hitID.emplace_back(*hid_mc);
+            hitPE.emplace_back(*hpe_mc);
+            hiT.emplace_back(*ht_mc);
             selected_thru_mc+=1;
 
             }
@@ -527,6 +569,11 @@ void throughgoing_muons(){
 
     std::string cb_fig_name = "./figures/charge_cb_hist_ratio_mc_world.pdf";
     MakeRatioPlot(cb_hist, cb_hist_mc, cb_fig_name);
+
+    // Save cpe histograms to file
+    TFile* outFile = new TFile("thru_muon_data_world-mc_cpe.root", "RECREATE");
+    cpe_hist->Write();
+    cpe_hist_mc->Write();
 
     timer.Stop();
     timer.Print();
